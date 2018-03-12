@@ -1,0 +1,120 @@
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script
+  src="http://code.jquery.com/jquery-3.3.1.min.js"
+  integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
+  crossorigin="anonymous"></script>
+<script src="https://raw.githubusercontent.com/Vestride/Shuffle/v5.1.0/dist/shuffle.min.js"></script>
+<div class='showtime'></div>
+<script>
+    const showTime = $('.showTime');
+    const girls = {};
+    var scrollTop = 0;
+
+    $('.showtime').delegate('video', 'click', (event) => {
+      const clicked = $(event.target);
+      const videos = $('video');
+
+      if (clicked.hasClass('focus')) {
+        clicked.removeClass('focus');
+        clicked.get(0).muted = true;
+        videos.show();
+        $(document).scrollTop(scrollTop);
+      } else  {
+        scrollTop = $(document).scrollTop();
+        videos.hide();
+        clicked.addClass('focus');
+        clicked.show();
+        clicked.get(0).muted = false;
+      }
+    });
+
+    $(document).keyup((event) => {
+      const focused = $('.focus');
+      const videos = $('video[src]');
+      const numVideos = videos.length;
+      var index = focused.index();
+
+      if (index < 0 || numVideos <= 1 || !['ArrowRight', 'ArrowLeft'].includes(event.key)) {
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        index = (index + 1) % numVideos;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        index = (index - 1) % numVideos;
+      }
+
+      const next = videos.get(index);
+
+      focused.hide();
+      focused.removeClass('focus');
+      focused.get(0).muted = true;
+      $(next).addClass('focus')
+      $(next).show();
+      $(next).get(0).muted = false;
+    });
+
+    function getCams() {
+      $.ajax('/cams', {
+        success: (resp) => {
+          const cams = JSON.parse(resp);
+
+          // Remove all offline girls
+          for(girl in girls) {
+            if (!cams.includes(girl) && !girls[girl].hasClass('focus')) {
+              console.log('removing', girl);
+              girls[girl].remove();
+              delete girls[girl];
+            }
+          }
+
+          // Add all new online girls
+          cams.forEach((cam) => {
+            if (girls[cam]) {
+              return;
+            }
+
+            $.ajax('/cams' + cam, {
+              success: (stream) => {
+                console.log('adding', cam);
+
+                const video = $('<video id="' + cam + '" muted></video>');
+                const videoEl = video.get(0);
+                showTime.append(video);
+                video.on("DOMNodeRemoved", () => hls.destroy(videoEl));
+
+                if ($('.focus').length > 0) {
+                  video.hide();
+                }
+
+                girls[cam] = video;
+
+                const hls = new Hls();
+                hls.loadSource(stream);
+                hls.attachMedia(videoEl);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => videoEl.play());
+              }
+            })
+          });
+
+          setTimeout(getCams, 30000);
+        }
+      });
+    }
+
+    getCams();
+</script>
+<style>
+html, body {
+  margin: 0;
+  background: black;
+}
+
+.focus {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+}
+</style>
